@@ -1,0 +1,61 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: price-management
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/prices}
+    username: ${DATABASE_USER:prices}
+    password: ${DATABASE_PASSWORD:prices}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+providers:
+  a:
+    url: ${PROVIDER_A_URL:http://localhost:8082}
+    timeout-ms: ${PROVIDER_A_TIMEOUT_MS:250}
+  b:
+    url: ${PROVIDER_B_URL:http://localhost:8082}
+    timeout-ms: ${PROVIDER_B_TIMEOUT_MS:650}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      providerA:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+      providerB:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true

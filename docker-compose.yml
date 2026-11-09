@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: prices
+      POSTGRES_USER: prices
+      POSTGRES_PASSWORD: prices
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prices -d prices"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  wiremock:
+    image: wiremock/wiremock:3.13.1
+    command: ["--global-response-templating", "--verbose"]
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./stubs:/home/wiremock
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/prices
+      DATABASE_USER: prices
+      DATABASE_PASSWORD: prices
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PROVIDER_A_URL: http://wiremock:8080
+      PROVIDER_B_URL: http://wiremock:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      wiremock:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/readiness >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 4s
+      retries: 15
+      start_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres-data:
