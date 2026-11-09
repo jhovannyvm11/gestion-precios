@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/b/prices/STALE-FALLBACK"
+  },
+  "response": {
+    "status": 503,
+    "headers": {"Content-Type": "application/json"},
+    "jsonBody": {"message": "Proveedor B no disponible"}
+  },
+  "priority": 1
+}

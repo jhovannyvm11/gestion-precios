@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/b/prices/RATE-LIMIT"
+  },
+  "response": {
+    "status": 429,
+    "headers": {
+      "Content-Type": "application/json",
+      "Retry-After": "1"
+    },
+    "jsonBody": {
+      "message": "Límite de peticiones excedido"
+    }
+  },
+  "priority": 1
+}

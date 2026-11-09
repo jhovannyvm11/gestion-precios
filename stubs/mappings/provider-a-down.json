@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/a/prices/(FAIL-A|FAIL-ALL)"
+  },
+  "response": {
+    "status": 503,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "message": "Proveedor A no disponible"
+    }
+  },
+  "priority": 1
+}

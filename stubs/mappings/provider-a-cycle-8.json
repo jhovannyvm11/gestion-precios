@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/a/prices/.*"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 100,
+    "headers": {"Content-Type": "application/json"},
+    "jsonBody": {
+      "sku": "{{request.pathSegments.[2]}}",
+      "basePrice": 100.0,
+      "currency": "USD",
+      "lastUpdated": "2026-11-01T10:00:00Z"
+    }
+  },
+  "priority": 10,
+  "scenarioName": "provider-a-freshness-cycle",
+  "requiredScenarioState": "8",
+  "newScenarioState": "9"
+}

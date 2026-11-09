@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/a/prices/STALE-FALLBACK"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 100,
+    "headers": {"Content-Type": "application/json"},
+    "jsonBody": {
+      "sku": "STALE-FALLBACK",
+      "basePrice": 25.0,
+      "currency": "USD",
+      "lastUpdated": "2026-11-01T10:00:00Z"
+    }
+  },
+  "priority": 1,
+  "scenarioName": "stale-fallback-provider-a",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "StaleServed"
+}

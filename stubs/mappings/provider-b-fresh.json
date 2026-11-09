@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/b/prices/.*"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 500,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "itemCode": "{{request.pathSegments.[2]}}",
+      "cost": 102.0,
+      "curr": "USD",
+      "timestamp": 1794268800
+    }
+  }
+}

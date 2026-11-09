@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/a/prices/STALE-FALLBACK"
+  },
+  "response": {
+    "status": 503,
+    "headers": {"Content-Type": "application/json"},
+    "jsonBody": {"message": "Proveedor A no disponible"}
+  },
+  "priority": 1,
+  "scenarioName": "stale-fallback-provider-a",
+  "requiredScenarioState": "StaleServed"
+}
