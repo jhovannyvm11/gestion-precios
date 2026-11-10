@@ -13,7 +13,7 @@
       "sku": "{{request.pathSegments.[2]}}",
       "basePrice": 100.0,
       "currency": "USD",
-      "lastUpdated": "2026-11-10T00:00:00Z"
+      "lastUpdated": "{{now}}"
     }
   },
   "priority": 10,

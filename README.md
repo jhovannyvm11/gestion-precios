@@ -4,17 +4,46 @@ Aplicación de gestión de reglas comerciales y consulta consolidada de precios.
 
 ## Arquitectura
 
+![Diagrama de arquitectura de Precio Claro](docs/diagramas/arquitectura.svg)
+
+El gráfico también está disponible como escena editable de Excalidraw en [docs/diagramas/arquitectura.excalidraw](docs/diagramas/arquitectura.excalidraw). Consulta la [guía integral del proyecto](docs/GUIA_DEL_PROYECTO.md) para conocer tecnologías, arquitectura, lógica de negocio, API y operación; el [reporte técnico](docs/REPORTE_IMPLEMENTACION.md) detalla la implementación y la evidencia de pruebas.
+
+### Flujo end-to-end
+
+El diagrama distingue las operaciones CRUD de la consulta de precios. En el camino de consulta, A y B no se invocan en paralelo: B solo se consulta directamente cuando la regla lo prefiere, después de un fallo de A o para refrescar una cotización stale en segundo plano.
+
 ```mermaid
 flowchart LR
-    U[Usuario] --> W[SPA React / Nginx]
-    W -->|REST /api/v1| API[Spring Boot]
-    API -->|CRUD de reglas| DB[(PostgreSQL)]
-    API -->|Cotización por SKU + versión| C[(Redis: caché y rate limit)]
-    API -->|GET /a/prices/{sku}| A[WireMock · Proveedor A]
-    API -->|GET /b/prices/{sku}| B[WireMock · Proveedor B]
-    A --> API
-    B --> API
-    API --> W
+    U[Usuario] --> FE[SPA React]
+    FE -->|HTTP /api| NG[Nginx]
+    NG --> API[Spring Boot API]
+    API -->|POST / GET / PUT / DELETE reglas| CRUD[ProductRuleService]
+    CRUD -->|Persistencia e integridad| PG[(PostgreSQL)]
+    API -->|GET /prices?sku| LOOKUP[PriceLookupService]
+    LOOKUP -->|Validar regla activa| PG
+    LOOKUP --> RC[(Redis: cotizaciones)]
+    RC --> FRESH{Cotización fresca?}
+    FRESH -->|Sí| MARGIN[Aplicar margen de regla]
+    FRESH -->|No| PREF{Proveedor preferido}
+    PREF -->|AUTO o A| A[Proveedor A]
+    A -->|Respuesta| CHECK{Cotización stale?}
+    CHECK -->|No| SAVE[Guardar cotización en Redis]
+    CHECK -->|Sí| SAVE
+    CHECK -->|Sí, además| REFRESH[Refresh asíncrono]
+    REFRESH --> LIMIT_REFRESH[Rate limit global en Redis]
+    LIMIT_REFRESH -->|Permiso| B_REFRESH[Proveedor B para refresh]
+    B_REFRESH -->|Actualizar cotización, sin esperar| RC
+    PREF -->|B directo| LIMIT_SYNC[Rate limit global en Redis]
+    A -->|Error / breaker abierto| LIMIT_SYNC
+    LIMIT_SYNC -->|Permiso| B_SYNC[Proveedor B para consulta]
+    LIMIT_SYNC -->|Sin permiso| FALLBACK{Fallback stale disponible?}
+    B_SYNC -->|Respuesta| SAVE
+    B_SYNC -->|Error / timeout / breaker abierto| FALLBACK
+    FALLBACK -->|Sí| MARGIN
+    FALLBACK -->|No| UNAVAILABLE[503 controlado]
+    SAVE --> MARGIN
+    MARGIN --> RESPONSE[Respuesta: base, margen, total, fuente, stale y latencia]
+    RESPONSE --> FE
 ```
 
 ## Tecnologías
@@ -73,20 +102,24 @@ Los errores usan `{ "timestamp", "status", "error", "message", "fields" }`. Un S
 
 ## Estrategia de consulta
 
-1. Se valida la regla activa en PostgreSQL antes de consultar caché o proveedores.
-2. Redis conserva la respuesta normalizada por `SKU + versión optimista de la regla`. Una cotización se considera fresca durante 60 segundos y se conserva hasta 15 minutos para fallback. El margen se calcula con la regla actual, no se almacena dentro de la cotización.
-3. En `AUTO` y `PROVIDER_A`, A se consulta primero. Un resultado fresco se devuelve inmediatamente. Un dato de A con más de 15 minutos se devuelve marcado como stale y provoca una actualización asíncrona desde B si se obtiene permiso de tasa.
-4. Si A falla, se intenta B sin encolar y con timeout de 650 ms. En `PROVIDER_B`, B es la fuente directa. Una cotización stale utilizable sirve como `FALLBACK_CACHE` ante error, circuito abierto o falta de permiso.
-5. Si no hay fallback disponible, la API responde `503` controlado. El precio final se calcula como `providerPrice * (1 + marginPercentage / 100)` y se redondea a dos decimales.
+1. Se normaliza el SKU y se carga su regla desde PostgreSQL. Se rechazan con `404` las reglas inexistentes o inactivas antes de leer caché o invocar proveedores.
+2. Se busca en Redis una cotización para la identidad de esa regla. Si está fresca, se reutiliza sin llamada externa.
+3. En `AUTO` o `PROVIDER_A`, se invoca A primero. Si A responde con una cotización de antigüedad no superior a 15 minutos, se usa como fuente de la respuesta. Si A responde con una cotización más antigua, se devuelve marcada `stale: true` y se intenta actualizar con B en segundo plano, sujeto al rate limit. Este caso no espera la actualización de B.
+4. B se invoca de forma síncrona si la regla prefiere `PROVIDER_B`, o si A falla (incluidos timeout, circuito abierto o saturación de su bulkhead). La llamada a B consume un permiso del limitador antes de tocar al proveedor; no se espera en una cola.
+5. Si B falla o no hay permiso, se responde con una cotización de fallback retenida, marcada como `FALLBACK_CACHE` y stale. Si no hay ninguna disponible, se devuelve `503`.
+6. La cotización elegida se normaliza al mismo modelo independientemente del proveedor. El backend le aplica el margen vigente de la regla: `providerPrice * (1 + marginPercentage / 100)`, con redondeo a dos decimales. No se promedian ni suman cotizaciones A/B: cuando B entra en la ruta es failover, fuente preferida o actualización de respaldo, no una combinación aritmética. La respuesta incluye precio base, margen, total, moneda, fuente, frescura y latencia.
 
-La respuesta típica usa la caché o A (stub de 100 ms). B demora 500 ms en el stub y puede demorar hasta 900 ms según el enunciado. El cliente limita conexión a 100 ms y lectura a 650 ms; esto acota llamadas lentas y deja margen bajo los 800 ms para el camino habitual, aunque no constituye una garantía p95 ante saturación de DB/Redis, pausas de JVM o degradación de red. No se encolan solicitudes excedentes y se aprovecha fallback stale. El SLA debe medirse con carga representativa y una mezcla de tráfico acordada.
+La estrategia favorece la frescura y el tiempo de respuesta: cache fresca evita llamadas externas; A es el camino primario rápido para `AUTO` y `PROVIDER_A`; B se reserva para preferencia explícita, failover o refresh no bloqueante. Los stubs simulan aproximadamente 100 ms para A y 500 ms para B; el escenario de B puede llegar a 900 ms según el requisito original.
+
+El diseño busca mantener el camino habitual —caché o A— por debajo de 800 ms y limita el tiempo de lectura de A a 250 ms. Para B, el timeout de conexión es de 100 ms y el de lectura, 650 ms; al no reintentar ni encolar, se limita la espera del proveedor. El rate limit evita que una ráfaga exceda la cuota: cuando se agota, se usa fallback stale o se responde `503`, no se acumula latencia esperando una ventana. Sin embargo, el timeout no garantiza por sí solo un p95 menor de 800 ms: B puede consumir hasta 650 ms de lectura, además del tiempo de DB, Redis, procesamiento y red. La meta p95 debe comprobarse con pruebas de carga representativas y una mezcla de tráfico acordada.
 
 ## Caché y resiliencia
 
-- Clave: `price:v1:{sku}:{ruleId}:{ruleVersion}`; TTL de retención: 15 minutos; frescura de caché: 60 segundos.
-- Cada actualización incrementa `@Version`. La clave `SKU + id de regla + versión` evita colisiones incluso al eliminar y recrear un SKU. Se invalida la clave anterior después de la escritura.
+- Se cachea en Redis la cotización normalizada del proveedor (precio base, moneda, proveedor y timestamp de cotización), junto con el momento local en que se guardó. No se cachean el margen ni el precio final: ambos dependen de la regla vigente y se calculan al responder.
+- Clave: `price:v1:{sku}:{ruleId}:{ruleVersion}`. La retención en Redis es de 15 minutos. La entrada es fresca por hasta 60 segundos desde su almacenamiento, siempre que la cotización del proveedor tampoco tenga más de 15 minutos de antigüedad.
+- `@Version` de JPA aumenta al actualizar la regla. Después del `PUT`, se invalida la clave de la versión anterior; las siguientes consultas usan la nueva versión y no pueden encontrar el dato bajo la clave anterior. En `DELETE` se invalida la clave vigente; si luego se crea el mismo SKU, el nuevo `ruleId` también lo aísla de cualquier clave anterior. Así, incluso ante una carrera con una solicitud concurrente que ya estaba en curso, su dato queda asociado a la versión vieja y no es elegible para la regla editada.
 - Un `single-flight` local por `SKU + id de regla + versión` hace que las solicitudes simultáneas de la misma instancia compartan el fetch externo; otras instancias siguen protegidas por el rate limit distribuido, pero no comparten ese fetch.
-- El limitador de B ejecuta una ventana deslizante Lua atómica en Redis: máximo 5 peticiones en cualquier ventana de 1000 ms, compartida entre instancias. Si no hay permiso, no se llama a B ni se encola la consulta.
+- El limitador de B ejecuta una ventana deslizante Lua atómica en Redis: máximo 5 peticiones en cualquier ventana de 1000 ms, compartida entre instancias. Cada intento a B —incluidos failover, preferencia directa y refresh en segundo plano— requiere permiso. Si no lo obtiene, no se llama a B ni se encola la consulta; se usa fallback stale si está disponible o se devuelve `503`.
 - Circuit breaker independiente por proveedor: ventana de 10 llamadas, mínimo 10, apertura al 50% de fallos, espera de 10 segundos y 3 llamadas permitidas en half-open.
 - Timeouts: conexión máximo 100 ms; lectura 250 ms para A y 650 ms para B. No hay reintentos automáticos de B: evitan consumo duplicado de cuota y latencia adicional.
 - Bulkheads con semáforos no bloqueantes: 32 llamadas simultáneas a A y 5 a B por instancia. Sin permiso, la integración degrada a B o a caché/error controlado en lugar de hacer cola.
@@ -94,7 +127,7 @@ La respuesta típica usa la caché o A (stub de 100 ms). B demora 500 ms en el s
 
 ## Stubs disponibles
 
-Los stubs están en `stubs/mappings`; A responde en `/a/prices/{sku}` con 100 ms y un ciclo determinista de diez estados (tres stale, 30%); B responde en `/b/prices/{sku}` con 500 ms. Perfiles preparados: `FAIL-A` falla A para probar failover; `FAIL-ALL` falla ambos y produce `503`; `STALE-1` siempre devuelve stale; `STALE-FALLBACK` devuelve stale en la primera llamada, luego A y B fallan para demostrar `FALLBACK_CACHE`; `RATE-LIMIT` fuerza un `429` de B cuando la regla prefiere `PROVIDER_B`. Para usarlos, crea reglas con esos SKUs desde la interfaz. El ciclo genérico de A se comparte entre llamadas al stub y se reinicia al recrear WireMock.
+Los stubs están en `stubs/mappings`; A responde en `/a/prices/{sku}` con 100 ms y un ciclo determinista de diez estados (tres stale, 30%); las respuestas frescas usan la hora actual para no envejecer con el tiempo, mientras los estados stale conservan timestamps antiguos intencionalmente. B responde en `/b/prices/{sku}` con 500 ms y su timestamp fresco también se genera dinámicamente. Perfiles preparados: `FAIL-A` falla A para probar failover; `FAIL-ALL` falla ambos y produce `503`; `STALE-1` siempre devuelve stale; `STALE-FALLBACK` devuelve stale en la primera llamada, luego A y B fallan para demostrar `FALLBACK_CACHE`; `RATE-LIMIT` fuerza un `429` de B cuando la regla prefiere `PROVIDER_B`. Para usarlos, crea reglas con esos SKUs desde la interfaz. El ciclo genérico de A se comparte entre llamadas al stub y se reinicia al recrear WireMock.
 
 WireMock acepta cambios de mappings mediante su API admin. La URL externa local es `http://localhost:8082`; desde backend Compose se usa `http://wiremock:8080`.
 

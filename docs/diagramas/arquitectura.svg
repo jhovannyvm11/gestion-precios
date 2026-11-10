@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="780" viewBox="0 0 1440 780" role="img" aria-labelledby="title desc">
+  <title id="title">Arquitectura de Precio Claro</title>
+  <desc id="desc">Flujo entre usuario, aplicación web, middleware Spring Boot, PostgreSQL, Redis y los proveedores simulados A y B.</desc>
+  <defs>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#e8eee8" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#526259"/></marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#2871a8"/></marker>
+    <style>
+      text{font-family:Arial,sans-serif;fill:#17231d}.title{font-size:30px;font-weight:700}.subtitle{font-size:15px;fill:#5f6e64}.label{font-size:13px;font-weight:700;fill:#526259}.node-title{font-size:19px;font-weight:700}.node-copy{font-size:14px;fill:#4d5b52}.small{font-size:12px;fill:#5f6e64}.box{stroke-width:2;rx:12}.link{fill:none;stroke:#526259;stroke-width:2.5;marker-end:url(#arrow)}.api-link{fill:none;stroke:#2871a8;stroke-width:3;marker-end:url(#arrowBlue)}
+    </style>
+  </defs>
+  <rect width="1440" height="780" fill="#f8fbf8"/><rect width="1440" height="780" fill="url(#grid)"/>
+  <text class="title" x="54" y="62">Precio Claro · Arquitectura de extremo a extremo</text>
+  <text class="subtitle" x="54" y="91">Gestión de reglas, caché compartida e integración resiliente con dos proveedores REST simulados</text>
+
+  <rect x="55" y="280" width="175" height="122" class="box" fill="#e6f4ea" stroke="#28744f"/>
+  <text class="node-title" x="142" y="323" text-anchor="middle">Usuario</text>
+  <text class="node-copy" x="142" y="350" text-anchor="middle">Operador interno</text>
+  <text class="small" x="142" y="374" text-anchor="middle">CRUD / consulta</text>
+
+  <rect x="300" y="245" width="245" height="192" class="box" fill="#e8f3fb" stroke="#2871a8"/>
+  <text class="label" x="422" y="273" text-anchor="middle">CAPA DE PRESENTACIÓN</text>
+  <text class="node-title" x="422" y="311" text-anchor="middle">SPA React</text>
+  <text class="node-copy" x="422" y="339" text-anchor="middle">TypeScript + Vite</text>
+  <text class="node-copy" x="422" y="362" text-anchor="middle">Nginx · puerto 3000</text>
+  <text class="small" x="422" y="395" text-anchor="middle">Proxy /api → backend:8080</text>
+
+  <rect x="625" y="225" width="305" height="232" class="box" fill="#dceeff" stroke="#1864ab"/>
+  <text class="label" x="777" y="255" text-anchor="middle">MIDDLEWARE</text>
+  <text class="node-title" x="777" y="294" text-anchor="middle">Spring Boot REST</text>
+  <text class="node-copy" x="777" y="323" text-anchor="middle">CRUD ProductRule</text>
+  <text class="node-copy" x="777" y="347" text-anchor="middle">PriceLookupService</text>
+  <text class="node-copy" x="777" y="371" text-anchor="middle">Timeout · circuit breaker</text>
+  <text class="node-copy" x="777" y="395" text-anchor="middle">Bulkhead · single-flight</text>
+  <text class="small" x="777" y="428" text-anchor="middle">Puerto 8080 · /api/v1</text>
+
+  <rect x="1030" y="120" width="330" height="145" class="box" fill="#fff3bf" stroke="#b7791f"/>
+  <text class="label" x="1195" y="149" text-anchor="middle">PERSISTENCIA RELACIONAL</text>
+  <text class="node-title" x="1195" y="188" text-anchor="middle">PostgreSQL 16</text>
+  <text class="node-copy" x="1195" y="216" text-anchor="middle">ProductRule · SKU único</text>
+  <text class="small" x="1195" y="240" text-anchor="middle">Flyway V1 esquema · V2 regla demo</text>
+
+  <rect x="1030" y="315" width="330" height="145" class="box" fill="#ffe3e3" stroke="#c92a2a"/>
+  <text class="label" x="1195" y="344" text-anchor="middle">CACHE + CONTROL DISTRIBUIDO</text>
+  <text class="node-title" x="1195" y="383" text-anchor="middle">Redis 7</text>
+  <text class="node-copy" x="1195" y="411" text-anchor="middle">Cache: 60 s fresca / 15 min retención</text>
+  <text class="small" x="1195" y="435" text-anchor="middle">Ventana deslizante de B: 5 / 1000 ms</text>
+
+  <rect x="1030" y="535" width="155" height="145" class="box" fill="#e5dbff" stroke="#7048e8"/>
+  <text class="label" x="1107" y="564" text-anchor="middle">PROVEEDOR A</text>
+  <text class="node-title" x="1107" y="601" text-anchor="middle">WireMock</text>
+  <text class="node-copy" x="1107" y="628" text-anchor="middle">100 ms stub</text>
+  <text class="small" x="1107" y="653" text-anchor="middle">30% stale</text>
+
+  <rect x="1205" y="535" width="155" height="145" class="box" fill="#ffec99" stroke="#e67700"/>
+  <text class="label" x="1282" y="564" text-anchor="middle">PROVEEDOR B</text>
+  <text class="node-title" x="1282" y="601" text-anchor="middle">WireMock</text>
+  <text class="node-copy" x="1282" y="628" text-anchor="middle">500 ms stub</text>
+  <text class="small" x="1282" y="653" text-anchor="middle">5 RPS · puede dar 429</text>
+
+  <path d="M230 341H300" class="link"/><text class="label" x="264" y="327" text-anchor="middle">UI</text>
+  <path d="M545 341H625" class="api-link"/><text class="label" x="585" y="327" text-anchor="middle">REST</text>
+  <path d="M930 285H980V192H1030" class="link"/><text class="label" x="984" y="179">CRUD</text>
+  <path d="M930 365H1030" class="link"/><text class="label" x="980" y="350" text-anchor="middle">cache / rate</text>
+  <path d="M860 457V495H1107V535" class="api-link"/><text class="label" x="1005" y="487" text-anchor="middle">REST A</text>
+  <path d="M900 457V510H1282V535" class="api-link"/><text class="label" x="1195" y="503" text-anchor="middle">REST B</text>
+  <path d="M1055 535V510H875V457" class="link"/>
+  <path d="M1240 535V520H900V457" class="link"/>
+
+  <rect x="55" y="620" width="875" height="90" rx="10" fill="#ffffff" stroke="#d5ded5"/>
+  <text class="label" x="78" y="650">EJECUCIÓN LOCAL</text>
+  <text class="node-copy" x="78" y="681">docker compose up --build · health checks para PostgreSQL, Redis y API</text>
+  <text class="small" x="1360" y="748" text-anchor="end">Precio Claro · Periferia IT</text>
+</svg>

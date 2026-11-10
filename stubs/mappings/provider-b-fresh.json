@@ -13,7 +13,7 @@
       "itemCode": "{{request.pathSegments.[2]}}",
       "cost": 102.0,
       "curr": "USD",
-      "timestamp": 1794268800
+      "timestamp": "{{now format='unix'}}"
     }
   }
 }
